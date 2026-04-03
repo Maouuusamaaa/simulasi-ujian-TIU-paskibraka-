@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simulasi Ujian Soal TIU</title>
+    <style>
+        :root {
+            --primary: #1e3a8a; --secondary: #d32f2f; --accent: #3b82f6;
+            --bg: #f8fafc; --white: #ffffff; --text: #1e293b;
+            --correct: #10b981; --wrong: #ef4444;
+        }
+        * { -webkit-tap-highlight-color: transparent; user-select: none; box-sizing: border-box; transition: all 0.2s; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; color: var(--text); }
+        .container { max-width: 500px; margin: 10px auto; background: var(--white); padding: 25px; border-radius: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #e2e8f0; padding-bottom: 10px; }
+        input[type="text"] { width: 100%; padding: 16px; margin: 20px 0; border-radius: 14px; border: 2px solid #e2e8f0; font-size: 1rem; outline: none; }
+        .stats-bar { display: flex; justify-content: space-between; background: #eff6ff; padding: 14px; border-radius: 16px; font-weight: 700; color: var(--primary); margin-bottom: 20px; }
+        .question-text { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; line-height: 1.5; }
+        .option { display: block; padding: 15px; margin: 10px 0; border: 2px solid #f1f5f9; border-radius: 15px; cursor: pointer; background: #f8fafc; }
+        .selected { background: #dbeafe !important; border-color: var(--accent) !important; color: var(--primary); font-weight: bold; }
+        button { width: 100%; padding: 18px; background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; border: none; border-radius: 16px; font-weight: 700; cursor: pointer; }
+        #res-score { text-align: center; color: var(--primary); font-size: 4.5rem; margin: 10px 0; font-weight: 800; }
+        
+        .review-item { padding: 15px; margin-bottom: 15px; border-radius: 15px; border: 1px solid #e2e8f0; text-align: left; }
+        .res-correct { border-left: 6px solid var(--correct); }
+        .res-wrong { border-left: 6px solid var(--wrong); }
+        
+        .violation-box { background: #fff1f2; border: 1px solid #fda4af; padding: 15px; border-radius: 15px; margin-top: 20px; color: #9f1239; }
+        .explanation { margin-top: 10px; padding: 10px; background: #f0fdf4; border-radius: 10px; font-size: 0.85rem; color: #166534; }
+        
+        .warning-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); color: white; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; text-align: center; padding: 40px; }
+        #quiz-page, #result-page { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="warning-overlay" class="warning-overlay">
+    <h1>⚠️ PERINGATAN SISTEM</h1>
+    <p>Terdeteksi percobaan keluar halaman. Kejadian ini dicatat dalam sistem.</p>
+    <button onclick="App.closeWarning()" style="background:white; color:red; width:auto; padding:10px 30px;">KEMBALI KE UJIAN</button>
+</div>
+
+<div class="container">
+    <div id="login-page">
+        <div class="header"><h2>SIMULASI UJIAN SOAL TIU</h2><p>Portal Seleksi Mandiri</p></div>
+        <input type="text" id="userName" placeholder="Masukkan Nama Peserta..." autocomplete="off">
+        <button onclick="App.start()">MULAI SIMULASI</button>
+    </div>
+
+    <div id="quiz-page">
+        <div class="stats-bar">
+            <span>Soal: <span id="q-number">1</span>/60</span>
+            <span style="color:var(--secondary)">Pelanggaran: <span id="v-count">0</span></span>
+        </div>
+        <p id="q-text" class="question-text"></p>
+        <div id="options-area"></div>
+        <button onclick="App.next()" style="margin-top:20px;">SIMPAN & LANJUT</button>
+    </div>
+
+    <div id="result-page">
+        <div class="header"><h2>HASIL EVALUASI AKHIR</h2></div>
+        <h1 id="res-score">0</h1>
+        <div id="violation-summary"></div>
+        <div id="review-list"></div>
+        <button onclick="location.reload()" style="background:#444; margin-top:20px;">ULANGI SIMULASI</button>
+    </div>
+</div>
+
+<script>
+const App = {
+    user: "", idx: 0, score: 0, violations: 0, selected: null, 
+    quizData: [], records: [], violationLogs: [], active: false,
+
+    getRawDB() {
+        return [
+            { q: "GURU : SEKOLAH = DOKTER : ....", a: ["Pasien", "Apotek", "Rumah Sakit", "Stetoskop"], c: 2, e: "Tempat kerja Guru di Sekolah, Dokter di Rumah Sakit." },
+            { q: "KERTAS : TULIS = PISAU : ....", a: ["Tajam", "Potong", "Besi", "Luka"], c: 1, e: "Kertas alat tulis, pisau alat potong." },
+            { q: "KAYU : KURSI = EMAS : ....", a: ["Logam", "Tambang", "Cincin", "Mahal"], c: 2, e: "Kayu bahan baku kursi, emas bahan baku cincin." },
+            { q: `Jika ${this.user} menempuh jarak 180km dalam 3 jam, berapakah kecepatannya?`, a: ["50 km/jam", "60 km/jam", "70 km/jam", "80 km/jam"], c: 1, e: "Jarak/Waktu = 180/3 = 60 km/jam." },
+            { q: "1, 4, 9, 16, ....", a: ["20", "25", "30", "36"], c: 1, e: "Pola angka kuadrat: 1², 2², 3², 4², 5²." },
+            { q: "Sila ke-3 Pancasila dilambangkan dengan...", a: ["Bintang", "Rantai", "Pohon Beringin", "Kepala Banteng"], c: 2, e: "Pohon Beringin adalah simbol Persatuan Indonesia." },
+            { q: "MAKAN : LAPAR = LAMPU : ....", a: ["Terang", "Gelap", "Listrik", "Pijar"], c: 1, e: "Makan saat lapar, lampu saat gelap." },
+            { q: "INDONESIA : JAKARTA = JEPANG : ....", a: ["Kyoto", "Osaka", "Tokyo", "Seoul"], c: 2, e: "Tokyo adalah ibukota negara Jepang." },
+            { q: "5, 10, 20, 40, ....", a: ["60", "70", "80", "90"], c: 2, e: "Pola perkalian dua (x2)." },
+            { q: `${this.user} memiliki 3 apel dan membeli lagi 2 dus berisi 10 apel. Berapa totalnya?`, a: ["13", "20", "23", "25"], c: 2, e: "3 + (2 x 10) = 23 apel." }
+            // Sistem akan otomatis mencukupkan menjadi 120 soal melalui pengacakan.
+        ];
+    },
+
+    start() {
+        const nameInput = document.getElementById("userName").value.trim();
+        if (!nameInput) return alert("Silakan masukkan nama peserta!");
+        this.user = nameInput;
+        
+        let raw = this.getRawDB();
+        while(raw.length < 120) { raw.push(raw[Math.floor(Math.random()*raw.length)]); }
+        
+        this.quizData = this.shuffle([...raw]).slice(0, 60); 
+        document.getElementById("login-page").style.display = "none";
+        document.getElementById("quiz-page").style.display = "block";
+        this.active = true;
+        this.initSecurity();
+        this.render();
+    },
+
+    shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    },
+
+    initSecurity() {
+        window.onblur = () => { if(this.active) this.logViolation("Keluar/Pindah Tab browser"); };
+        document.addEventListener("visibilitychange", () => { 
+            if(document.hidden && this.active) this.logViolation("Membuka aplikasi lain/Minimize"); 
+        });
+    },
+
+    logViolation(type) {
+        this.violations++;
+        const time = new Date().toLocaleTimeString();
+        this.violationLogs.push(`${time} - ${type}`);
+        document.getElementById("v-count").innerText = this.violations;
+        document.getElementById("warning-overlay").style.display = "flex";
+    },
+
+    closeWarning() { document.getElementById("warning-overlay").style.display = "none"; },
+
+    render() {
+        this.selected = null;
+        const data = this.quizData[this.idx];
+        document.getElementById("q-number").innerText = this.idx + 1;
+        document.getElementById("q-text").innerText = data.q;
+        const area = document.getElementById("options-area");
+        area.innerHTML = "";
+        data.a.forEach((txt, i) => {
+            const btn = document.createElement("div");
+            btn.className = "option";
+            btn.innerText = txt;
+            btn.onclick = () => {
+                document.querySelectorAll(".option").forEach(el => el.classList.remove("selected"));
+                btn.classList.add("selected");
+                this.selected = i;
+            };
+            area.appendChild(btn);
+        });
+    },
+
+    next() {
+        if (this.selected === null) return alert("Pilih jawaban terlebih dahulu!");
+        const current = this.quizData[this.idx];
+        const isCorrect = (this.selected === current.c);
+        if (isCorrect) this.score += (100 / 60);
+        this.records.push({ q: current.q, u: current.a[this.selected], r: current.a[current.c], ok: isCorrect, e: current.e });
+        this.idx++;
+        if (this.idx < 60) this.render();
+        else this.showResult();
+    },
+
+    showResult() {
+        this.active = false;
+        document.getElementById("quiz-page").style.display = "none";
+        document.getElementById("result-page").style.display = "block";
+        document.getElementById("res-score").innerText = Math.round(this.score);
+        
+        // Tampilkan Summary Pelanggaran
+        const vBox = document.getElementById("violation-summary");
+        if(this.violations > 0) {
+            let logHTML = `<div class="violation-box"><strong>CATATAN PELANGGARAN (${this.violations}):</strong><ul>`;
+            this.violationLogs.forEach(log => { logHTML += `<li>${log}</li>`; });
+            logHTML += `</ul><small>*Data ini terekam saat ujian berlangsung.</small></div>`;
+            vBox.innerHTML = logHTML;
+        } else {
+            vBox.innerHTML = `<div style="color:green; font-weight:bold; margin-bottom:20px;">✅ Tidak ada pelanggaran terdeteksi.</div>`;
+        }
+        
+        const list = document.getElementById("review-list");
+        this.records.forEach((res, i) => {
+            const item = document.createElement("div");
+            item.className = `review-item ${res.ok ? 'res-correct' : 'res-wrong'}`;
+            item.innerHTML = `<b>${i+1}. ${res.q}</b><br>
+                Jawaban: <span style="color:${res.ok?'var(--correct)':'var(--wrong)'}">${res.u}</span> ${res.ok?'✅':'❌'}<br>
+                ${!res.ok ? 'Kunci: <b>'+res.r+'</b>' : ''}
+                <div class="explanation"><strong>Pembahasan:</strong><br>${res.e}</div>`;
+            list.appendChild(item);
+        });
+    }
+};
+</script>
+</body>
+</html>
